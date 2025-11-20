@@ -20,7 +20,8 @@ const executeOrder = (req, res) => {
     });
   }
 
-  const orderId = uuidv4();
+  const orderId = clientOrderId || uuidv4();
+
 
   const order = {
     orderId,
