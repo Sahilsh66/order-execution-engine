@@ -1,8 +1,8 @@
 // src/server.js
-const http = require("http");
-const app = require("./app");
 const dotenv = require("dotenv");
 dotenv.config();
+const http = require("http");
+const app = require("./app");
 const { initWebSocketServer } = require("./ws/wsManager");
 const { connectRedis } = require("./config/redisClient");
 const { startOrderWorker } = require("./workers/orderWorker");

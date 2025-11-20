@@ -1,62 +1,50 @@
 // src/config/redisClient.js
-
 const { createClient } = require("redis");
 
-// Main client for normal commands 
-const REDIS_URL = process.env.REDIS_URL
+// Read env FIRST — no fallback
+const REDIS_URL = process.env.REDIS_URL;
+
+if (!REDIS_URL) {
+  console.error("\n❌ FATAL: REDIS_URL is NOT defined!");
+  console.error("→ This will cause localhost:6379 connection attempts.\n");
+}
 
 const redis = createClient({
   url: REDIS_URL,
+  socket: {
+    tls: REDIS_URL?.startsWith("rediss://"),
+    rejectUnauthorized: false,
+  },
 });
 
-
-// Disconnect after usage
-
-// Separate client for blocking operations 
 const redisBlocking = redis.duplicate();
 
 function attachLogging(client, name) {
   client.on("error", (err) => {
-    console.error(`❌ ${name} error:`, err.message || err);
+    console.error(`❌ ${name} error:`, err.message);
   });
 
-  client.on("connect", () => {
-    console.log(`[${name}] Connecting...`);
-  });
-
-  client.on("ready", () => {
-    console.log(`[${name}] Client ready`);
-  });
-
-  client.on("reconnecting", () => {
-    console.log(`[${name}] Reconnecting...`);
-  });
+  client.on("connect", () => console.log(`[${name}] Connecting...`));
+  client.on("ready", () => console.log(`[${name}] Ready`));
+  client.on("reconnecting", () => console.log(`[${name}] Reconnecting...`));
 }
 
 attachLogging(redis, "REDIS");
 attachLogging(redisBlocking, "REDIS_BLOCKING");
 
 async function connectRedis() {
-  try {
-    if (!redis.isOpen) {
-      console.log("[REDIS] Attempting to connect...");
-      await redis.connect();
-      console.log("✅ Connected to Redis");
-    } else {
-      console.log("[REDIS] Already connected");
-    }
+  if (!REDIS_URL) {
+    console.error("❌ No REDIS_URL configured. Skipping Redis.");
+    return;
+  }
 
-    if (!redisBlocking.isOpen) {
-      console.log("[REDIS_BLOCKING] Attempting to connect...");
-      await redisBlocking.connect();
-      console.log("✅ Connected REDIS_BLOCKING");
-    } else {
-      console.log("[REDIS_BLOCKING] Already connected");
-    }
-    console.log("✅ Connected to Redis:", REDIS_URL.includes("upstash") ? "Upstash" : "local");
-  } catch (error) {
-    console.error("[REDIS] Connection failed:", error);
-    throw error;
+  try {
+    await redis.connect();
+    await redisBlocking.connect();
+    console.log("✅ Redis connected to:", REDIS_URL);
+  } catch (err) {
+    console.error("❌ Redis connection failed:", err);
+    throw err;
   }
 }
 
