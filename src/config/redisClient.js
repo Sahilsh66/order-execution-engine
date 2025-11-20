@@ -3,10 +3,10 @@
 const { createClient } = require("redis");
 
 // Main client for normal commands 
-const REDIS_URL = process.env.REDIS_URL_UPSTASH
+const REDIS_URL_UPSTASH = process.env.REDIS_URL_UPSTASH
 
 const redis = createClient({
-  url: REDIS_URL,
+  url: REDIS_URL_UPSTASH,
 });
 
 
