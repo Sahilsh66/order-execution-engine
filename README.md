@@ -1,63 +1,146 @@
-## Order Execution Engine
+# Order Execution Engine
 
-This project simulates an order execution engine for cryptocurrency trades. Orders are submitted via a REST API, then relayed to a background processing pipeline once the client connects over WebSocket. Each stage of order processing—such as quoting, routing, building, submission, and confirmation—is streamed back to the client in real time through WebSocket updates. Redis is used to coordinate state between the HTTP API and the background worker.
+A demonstration backend for simulating cryptocurrency order execution with real-time updates via WebSocket, coordinated by a Redis-backed queue system.
 
-### How the journey unfolds
+**🌐 Live Demo Deployed:**  
+Try it at: [https://order-execution-engine-47cg.onrender.com](https://order-execution-engine-47cg.onrender.com)  
+- Example REST endpoint: [https://order-execution-engine-47cg.onrender.com/api/orders/execute](https://order-execution-engine-47cg.onrender.com/api/orders/execute)
+- Example WS endpoint: `wss://order-execution-engine-47cg.onrender.com/ws?orderId=YOUR_ORDER_ID`
 
-1. **Order intake (HTTP)**  
-   `POST /api/orders/execute` performs simple validation, stamps the order with a UUID, and drops it into a short-lived waiting store. At this stage nothing has hit Redis yet; the API simply replies with `{ orderId, status: "pending" }`.
+---
 
-2. **Handshake (WebSocket)**  
-   The client then opens `ws://localhost:3000/ws?orderId=<orderId>`. When the server spots that socket it:
-   - sends a quick “pending / starting soon” note so the UI knows it’s latched, and  
-   - pulls the matching order out of the waiting store and finally enqueues it into the Redis queue.
+## Overview
 
-3. **Queue + worker**  
-   Two Redis clients are used so the blocking worker (`BLPOP`) never starves the producer connection. The worker (`src/workers/orderWorker.js`) blocks on the queue, wakes up when an order arrives, and drives the mocked execution pipeline.
+This project models a trading backend where clients:
+1. **Submit orders** through a REST API,
+2. **Receive live order execution updates** via WebSocket,
+3. **Rely on Redis** to coordinate state between API requests and the background worker.
 
-4. **Execution storytelling**  
-   `src/services/orderExecutionService.js` simulates the messy bits—quote gathering, best-route selection, transaction building, submission, confirmation, and retries. Every stage calls the provided `onUpdate` callback, which the WebSocket manager forwards straight to the connected trader. If the socket disappears midway, the log makes that obvious.
+Every order goes through lifecycles like quoting, routing, transaction building, submission, and confirmation—with each progress broadcast in real time to the client.
 
-### Architecture cheat sheet
+---
 
-- **Controller** – `src/controllers/orderController.js` does validation and loads the waiting store.  
-- **Waiting store** – `src/store/waitingorders.js` is a tiny Map wrapper with helpers for tests.  
-- **WebSocket manager** – `src/ws/wsManager.js` watches for incoming sockets, promotes waiting orders into Redis, and logs every outbound status.  
-- **Redis helpers** – `src/redis/orderQueue.js` houses enqueue/dequeue helpers using the dual-client approach.  
-- **Worker** – `src/workers/orderWorker.js` is the forever loop that feeds `processOrderWithLogging`.  
-- **Execution + routing** – `src/services/orderExecutionService.js` and `src/services/dexRouterService.js` mock the trading brain.  
-- **Server bootstrap** – `src/server.js` wires Express, WebSocket, Redis, and the worker at startup.
+## How It Works
 
-### Running the system
+### 1. Order Submission (REST)
+
+- **Endpoint:** `POST /api/orders/execute`
+- **Flow:**  
+  - Your order (with fromToken, toToken, amount, etc.) is validated.
+  - The server assigns a unique orderId and places the order in an in-memory waiting store.
+  - The response is `{ orderId, status: "pending" }`.
+- **Note:** The order is _not_ in Redis queue yet!
+
+### 2. WebSocket Handshake
+
+- **WS URL:** `ws://localhost:3000/ws?orderId=<orderId>`  
+  _(or in production: `wss://order-execution-engine-47cg.onrender.com/ws?orderId=<orderId>`)_
+- **How it works:**
+  - When your WS connects with a matching orderId, the server acknowledges with a "pending/starting soon" status.
+  - The order moves from the waiting store to Redis and enters the processing queue.
+
+### 3. Order Queue & Worker
+
+- **Why Redis?**  
+  To allow background processing and updates decoupled from the submitting client.
+- **Worker:**  
+  - Constantly blocks on a Redis queue.
+  - Pops the next order and triggers simulated execution pipelines.
+  - Streams status updates for every execution stage back to the client via WebSocket.
+
+### 4. Execution Pipeline
+
+- A mocked implementation mimics:
+  - Quote gathering
+  - Routing
+  - Building the transaction
+  - Submitting to a (simulated) blockchain/Dex
+  - Confirmation or failure
+- Every stage is sent to the client as a WebSocket event.
+
+- If the client disconnects during execution, the log will note missed deliveries.
+
+---
+
+## Key Components
+
+- **`src/controllers/orderController.js`** — API validation, handles order intake.
+- **`src/store/waitingorders.js`** — In-memory map for tracking not-yet-queued orders.
+- **`src/ws/wsManager.js`** — Sets up WebSocket endpoints, promotes orders to Redis on connect, handles event streaming.
+- **`src/redis/orderQueue.js`** — Manages the Redis order queue with dual connections for safe blocking operations.
+- **`src/workers/orderWorker.js`** — Infinite loop for processing queued orders and driving the execution pipeline.
+- **`src/services/orderExecutionService.js`**/**`dexRouterService.js`** — Fake logic for execution, quote routing, and status simulation.
+- **`src/server.js`** — Combines Express, WebSocket, Redis, and worker startup.
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/)
+- [Redis](https://redis.io/) (local or remote)
+
+### Local development
 
 ```bash
-npm install           # install deps
-redis-server &        # ensure Redis is listening on 127.0.0.1:6379
-npm run dev           # start HTTP + WS + worker
+npm install
+redis-server &    # start local Redis (default port 6379)
+npm run dev
 ```
 
-Submit a test order:
+- REST API: [http://localhost:3000/api/orders/execute](http://localhost:3000/api/orders/execute)
+- WebSocket: `ws://localhost:3000/ws?orderId=<orderId>`
 
+### On Render.com
+
+No setup required—server is running at [https://order-execution-engine-47cg.onrender.com](https://order-execution-engine-47cg.onrender.com).
+
+---
+
+## Usage Example
+
+**1. Submit an order**:
 ```bash
-curl -X POST http://localhost:3000/api/orders/execute \
+curl -X POST https://order-execution-engine-47cg.onrender.com/api/orders/execute \
   -H "Content-Type: application/json" \
   -d '{"fromToken":"SOL","toToken":"USDC","amount":1,"orderType":"market"}'
 ```
 
-Next, open a WebSocket client to `ws://localhost:3000/ws?orderId=<orderId>`—you’ll see the play-by-play (pending → routing → building → submitted → confirmed/failed). Disconnecting midway shows how the system logs missed deliveries.
+**2. Connect WebSocket for real-time updates**:
+- Using [WebSocket King](https://websocketking.com/) or any WS client:
+  - Connect to `wss://order-execution-engine-47cg.onrender.com/ws?orderId=YOUR_ORDER_ID`
+- You'll see updates: `pending → routing → building → submitted → confirmed/failed`.
+- If you disconnect mid-way, logs will show missed messages.
 
-### Test coverage
+---
 
-- **Unit tests** exercise the waiting-store helpers, Redis queue helpers, and deterministic routing decisions in the mock dex router.  
-- **Integration tests** boot the Express + WebSocket stack (with the Redis queue mocked) to verify the POST workflow and the WS lifecycle, including the handoff from waiting store to queue and the delivery of streamed updates.
+## Testing
 
-Run them all with `npm test`.
+- **Unit tests**: waiting store, Redis queue, routing logic.
+- **Integration tests**: Full API + WS lifecycle (with Redis mocked or live).
+- Run all with:
+  ```bash
+  npm test
+  ```
 
-### Design notes
+---
 
-- Orders never execute before the client is ready. That waiting-store handshake guarantees real-time updates aren’t lost.
-- Separate Redis clients keep the blocking worker happy without starving HTTP requests.
-- WebSocket logging is intentionally noisy so ops folk can trace every “why didn’t I get an update?” question in seconds.
+## Design Notes
 
-All together, this repo demonstrates how a REST API, a Redis queue, and a WebSocket layer can cooperate to give traders low-latency feedback without dropping messages when clients connect a little late.
+- _No order is processed before the WebSocket client is ready_: ensures you won't miss live updates no matter when you connect.
+- _Dual Redis clients_: so that long-running queue operations never block the REST API.
+- _Verbose logging_: Makes debugging easy when tracking delivery issues.
+- _Simple, self-contained codebase_: Ideal for demos, POCs, or engine design inspiration.
+
+---
+
+## Why use this?
+
+- Demonstrates integrating REST APIs, message queues (Redis), and WebSocket event streams for real-time trading or task updates.
+- Shows good patterns for handshakes and guaranteed delivery in async systems.
+
+---
+
+MIT License
 
