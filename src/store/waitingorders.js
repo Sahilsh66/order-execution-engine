@@ -18,8 +18,18 @@ function takeWaitingOrder(orderId) {
   return order;
 }
 
+function clearWaitingOrders() {
+  waitingOrders.clear();
+}
+
+function getWaitingOrderCount() {
+  return waitingOrders.size;
+}
+
 module.exports = {
   addWaitingOrder,
   takeWaitingOrder,
+  clearWaitingOrders,
+  getWaitingOrderCount,
 };
  
