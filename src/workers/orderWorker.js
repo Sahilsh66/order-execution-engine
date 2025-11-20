@@ -5,7 +5,7 @@ const { processOrderWithLogging } = require("../services/orderExecutionService")
 const { sendOrderUpdate } = require("../ws/wsManager");
 
 async function startOrderWorker() {
-  console.log("🚀 Redis Order Worker started…");
+//   console.log("🚀 Redis Order Worker started…");
 
   while (true) {
     const order = await dequeueOrderBlocking();

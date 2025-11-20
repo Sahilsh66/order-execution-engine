@@ -1,10 +1,13 @@
 // src/server.js
 const http = require("http");
 const app = require("./app");
+const dotenv = require("dotenv");
+dotenv.config();
 const { initWebSocketServer } = require("./ws/wsManager");
 const { connectRedis } = require("./config/redisClient");
 const { startOrderWorker } = require("./workers/orderWorker");
 const PORT = 3000;
+
 
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (reason, promise) => {

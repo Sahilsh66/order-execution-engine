@@ -1,10 +1,16 @@
 // src/config/redisClient.js
+
 const { createClient } = require("redis");
 
 // Main client for normal commands (writes, etc.)
+const REDIS_URL = process.env.REDIS_URL_UPSTASH || "redis://127.0.0.1:6379";
+
 const redis = createClient({
-  url: "redis://127.0.0.1:6379",
+  url: REDIS_URL,
 });
+
+
+// Disconnect after usage
 
 // Separate client for blocking operations (e.g. BLPOP)
 const redisBlocking = redis.duplicate();
@@ -47,6 +53,7 @@ async function connectRedis() {
     } else {
       console.log("[REDIS_BLOCKING] Already connected");
     }
+    console.log("✅ Connected to Redis:", REDIS_URL.includes("upstash") ? "Upstash" : "local");
   } catch (error) {
     console.error("[REDIS] Connection failed:", error);
     throw error;
