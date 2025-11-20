@@ -2,8 +2,8 @@
 
 const { createClient } = require("redis");
 
-// Main client for normal commands (writes, etc.)
-const REDIS_URL = process.env.REDIS_URL_UPSTASH || "redis://127.0.0.1:6379";
+// Main client for normal commands 
+const REDIS_URL = process.env.REDIS_URL_UPSTASH
 
 const redis = createClient({
   url: REDIS_URL,
@@ -12,7 +12,7 @@ const redis = createClient({
 
 // Disconnect after usage
 
-// Separate client for blocking operations (e.g. BLPOP)
+// Separate client for blocking operations 
 const redisBlocking = redis.duplicate();
 
 function attachLogging(client, name) {

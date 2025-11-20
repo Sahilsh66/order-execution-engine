@@ -16,7 +16,7 @@ const executeOrder = async (req, res) => {
       });
     }
 
-    // We only support market orders (as per assignment)
+    // We only support market orders 
     if (orderType && orderType !== "market") {
       console.log("[CONTROLLER] Validation failed: invalid orderType");
       return res.status(400).json({
