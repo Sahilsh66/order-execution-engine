@@ -1,7 +1,7 @@
 // src/ws/wsManager.js
 const WebSocket = require("ws");
-const { enqueueOrder } = require("../services/orderExecutionService");
-const { takeWaitingOrder } = require("../store/waitingorders"); // make sure this path is correct
+const { enqueueOrderToRedis } = require("../redis/orderQueue");
+const { takeWaitingOrder } = require("../store/waitingorders");
 
 let wss = null;
 
@@ -14,13 +14,24 @@ const orderSockets = new Map();
 function sendOrderUpdate(orderId, payload) {
   const ws = orderSockets.get(orderId);
 
+  console.log("[WS] sendOrderUpdate called", {
+    orderId,
+    status: payload?.status,
+  });
+
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ orderId, ...payload }));
+    try {
+      ws.send(JSON.stringify({ orderId, ...payload }));
+      console.log("[WS] Update sent to client for order", orderId);
+    } catch (err) {
+      console.error("[WS] Failed to send update for order", orderId, err);
+    }
   } else {
     console.log(
       "[WS] No open socket for order",
       orderId,
-      "- update not delivered"
+      "- update not delivered. readyState=",
+      ws && ws.readyState
     );
   }
 }
@@ -42,23 +53,53 @@ function initWebSocketServer(server) {
     orderSockets.set(orderId, ws);
     console.log(`[WS] Client connected for order ${orderId}`);
 
-    const order = takeWaitingOrder(orderId);
-    if (order) {
-      console.log(`[WS] Found waiting order ${orderId}, starting execution`);
-      enqueueOrder(order, (id, payload) => {
-        // callback from engine → send over WS
-        sendOrderUpdate(id, payload);
-      });
-    } else {
-      console.log(
-        `[WS] No waiting order found for ${orderId}, maybe already processed or invalid`
+    // Determine if we have a waiting order for this socket
+    const waitingOrder = takeWaitingOrder(orderId);
+
+    if (waitingOrder) {
+      ws.send(
+        JSON.stringify({
+          orderId,
+          status: "pending",
+          message: "Order received. Starting execution shortly.",
+        })
       );
-      // you can decide whether to close or keep it open; for now:
-      ws.close();
+
+      enqueueOrderToRedis(waitingOrder)
+        .then(() => {
+          console.log(`[WS] Order ${orderId} moved from waiting store to Redis queue`);
+        })
+        .catch((err) => {
+          console.error(`[WS] Failed to enqueue waiting order ${orderId}:`, err);
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(
+              JSON.stringify({
+                orderId,
+                status: "failed",
+                message: "Failed to enqueue order for execution",
+                error: err.message,
+              })
+            );
+          }
+        });
+    } else {
+      ws.send(
+        JSON.stringify({
+          orderId,
+          status: "pending",
+          message:
+            "Order is not in waiting store. If this is unexpected, it may already be processing.",
+        })
+      );
     }
 
     ws.on("close", () => {
       console.log(`[WS] Client disconnected for order ${orderId}`);
+      orderSockets.delete(orderId);
+    });
+
+    ws.on("error", (error) => {
+      console.error(`[WS] Error for order ${orderId}:`, error);
       orderSockets.delete(orderId);
     });
   });

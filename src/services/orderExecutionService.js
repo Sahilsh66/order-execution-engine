@@ -1,27 +1,16 @@
 // services/orderExecutionService.js
-const { enqueue, getStats } = require("../utils/queue");
 const dexRouter = require("./dexRouterService");
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function enqueueOrder(order, onUpdate) {
-  enqueue(() => processOrderWithLogging(order, onUpdate));
-}
-
 async function processOrderWithLogging(order, onUpdate) {
-  const statsBefore = getStats();
-  console.log(
-    `[QUEUE] Starting order ${order.orderId}. Active=${statsBefore.activeCount}, Pending=${statsBefore.pendingCount}`
-  );
+  console.log(`[PROCESS] Starting order ${order.orderId}`);
 
   await executeMarketOrder(order, onUpdate);
 
-  const statsAfter = getStats();
-  console.log(
-    `[QUEUE] Finished order ${order.orderId}. Active=${statsAfter.activeCount}, Pending=${statsAfter.pendingCount}`
-  );
+  console.log(`[PROCESS] Finished order ${order.orderId}`);
 }
 
 async function executeMarketOrder(order, onUpdate) {
@@ -38,14 +27,14 @@ async function executeMarketOrder(order, onUpdate) {
 
       // --- pending ---
       notify({ status: "pending", attempt });
-      await sleep(300 + Math.random() * 300);
+      await sleep(500 + Math.random() * 250); // Slightly longer pending
 
       // --- routing (getting quotes) ---
       notify({ status: "routing", attempt });
       const route = await dexRouter.getBestRoute(order);
       const { bestDex, bestPrice, raydium, meteora } = route;
 
-      await sleep(500 + Math.random() * 500);
+      await sleep(700 + Math.random() * 350); // Longer routing latency
 
       notify({
         status: "routing",
@@ -56,15 +45,15 @@ async function executeMarketOrder(order, onUpdate) {
         meteoraPrice: meteora.price,
       });
 
-      await sleep(300 + Math.random() * 300);
+      await sleep(500 + Math.random() * 250); 
 
       // --- building transaction ---
       notify({ status: "building", dex: bestDex, attempt });
-      await sleep(400 + Math.random() * 500);
+      await sleep(600 + Math.random() * 350); 
 
       // --- submitted ---
       notify({ status: "submitted", dex: bestDex, attempt });
-      await sleep(800 + Math.random() * 500);
+      await sleep(900 + Math.random() * 500); 
 
       // --- execute on DEX ---
       const { txHash, executedPrice } = await dexRouter.executeSwap(
@@ -98,7 +87,7 @@ async function executeMarketOrder(order, onUpdate) {
       );
 
       if (attempt < maxAttempts) {
-        const backoff = baseDelayMs * Math.pow(2, attempt - 1); // 500, 1000, 2000
+        const backoff = baseDelayMs * Math.pow(2, attempt - 1); 
         console.log(
           `[EXECUTE] Retrying order ${orderId} in ${backoff} ms (attempt ${
             attempt + 1
@@ -127,4 +116,6 @@ async function executeMarketOrder(order, onUpdate) {
   );
 }
 
-module.exports = { enqueueOrder };
+module.exports = { 
+  processOrderWithLogging 
+};
